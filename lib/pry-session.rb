@@ -1,10 +1,6 @@
 require "pry-session/version"
 require 'pry'
 
-# Makes for some cleaner code
-require 'pipeable'
-class Object; include Pipeable end
-
 module PrySession
   SESSION_DIR = "#{Dir.home}/.pry-sessions"
 
@@ -89,7 +85,7 @@ module PrySession
 
       def process
         raise 'No sessions to load!' unless Dir.exists?(SESSION_DIR)
-        
+
         # Yes, cheating
         _pry_.input = StringIO.new("edit #{SESSION_DIR}/#{args.first}")
       end
@@ -104,7 +100,7 @@ module PrySession
 
       def options(opts)
         opts.on :s, :sort, "Sorts sessions by [name|ctime|size]\nex: --sort name:[asc|desc]",
-                argument: :required, as: Array, delimiter: ':'
+          argument: :required, as: Array, delimiter: ':'
 
         opts.on :g, :grep, "Greps for sessions by name", argument: :required, as: Regexp
       end
@@ -115,13 +111,13 @@ module PrySession
 
         # Mapper for transforming file names into a meta info container
         file_mapper = -> f {
-          "#{SESSION_DIR}/#{f}".pipe { |path|
+          "#{SESSION_DIR}/#{f}".yield_self { |path|
             FileMeta.new name: f, path: path, size: File.size(path), ctime: File.ctime(path)
           }
         }
 
         # Selecter for finding by name or regex
-        selecter = (opts[:g] || args.first).pipe { |query|
+        selecter = (opts[:g] || args.first).yield_self { |query|
           if query
             query.is_a?(Regexp) ?
               -> s { query.match s.name } :
@@ -130,24 +126,24 @@ module PrySession
             -> s { s }
           end
         }
-        
+
         # Sorter to arrange results
         sorter = if opts[:s] && %w(name size ctime).include?(opts[:s].first)
-          opts[:s].first.pipe { |field|
-            opts[:s][1] == 'asc' ? 
-              -> a,b { a.send(field) <=> b.send(field) } :
-              -> a,b { b.send(field) <=> a.send(field) }
-          }
-        else
-          -> a,b { a.ctime <=> b.ctime }
-        end
+                   opts[:s].first.yield_self { |field|
+                     opts[:s][1] == 'asc' ?
+                       -> a,b { a.send(field) <=> b.send(field) } :
+                       -> a,b { b.send(field) <=> a.send(field) }
+                   }
+                 else
+                   -> a,b { a.ctime <=> b.ctime }
+                 end
 
         Dir.entries(SESSION_DIR)
-           .reject { |f| /^..?$/.match f } # Get rid of current and parent dir
-           .map(&file_mapper)              # Map filenames to metainformation
-           .select(&selecter)              # Select matches
-           .sort(&sorter)                  # Sort those results
-           .each { |f| output.puts f }     # Output them
+          .reject { |f| /^..?$/.match f } # Get rid of current and parent dir
+          .map(&file_mapper)              # Map filenames to metainformation
+          .select(&selecter)              # Select matches
+          .sort(&sorter)                  # Sort those results
+          .each { |f| output.puts f }     # Output them
       end
     end
   end
